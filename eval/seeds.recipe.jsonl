@@ -1,0 +1,6 @@
+{"kind": "easy", "question": "宫保鸡丁怎么做？", "expect": ["宫保鸡丁"], "note": "诊断用：菜名直接问，语料里必有"}
+{"kind": "easy", "question": "提拉米苏怎么做？", "expect": ["提拉米苏"], "note": "诊断用：菜名直接问，语料里必有"}
+{"kind": "easy", "question": "麻婆豆腐怎么做？", "expect": ["麻婆豆腐"], "note": "诊断用：菜名直接问，语料里必有"}
+{"kind": "rare_token", "question": "龟苓膏怎么做？", "expect": ["龟苓膏"], "note": "诊断用：低频术语，只在一篇里出现"}
+{"kind": "easy", "question": "戚风蛋糕怎么做？", "expect": ["戚风蛋糕"], "note": "诊断用：菜名直接问，语料里必有"}
+{"kind": "absent", "question": "佛跳墙怎么做？", "expect": [], "probe": {"absent": ["佛跳墙"]}, "note": "far"}
