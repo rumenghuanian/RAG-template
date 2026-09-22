@@ -103,8 +103,8 @@ def main() -> None:
 
     print(
         f"\n可对比 {len(rows)} 条"
-        f"（人工没标的 {missing} 条、「拿不准」{skipped_unsure} 条、"
-        f"裁判未判定的 {skipped_nojudge} 条不参与）"
+        f"（「拿不准」{skipped_unsure} 条、裁判未判定的 {skipped_nojudge} 条、"
+        f"以及 {missing} 条不在复核范围内的闸门/partial 题 —— 都不参与）"
     )
     if not rows:
         raise SystemExit("没有可对比的条目 —— 先完成人工标注")
