@@ -9,6 +9,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from .identity import DEFAULT_IDENTITY, resolve_identity  # noqa: F401  （对外仍是这两个名字）
+
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT_TEMPLATE = """你是「{role}」，回答依据是一个{corpus}。
@@ -36,25 +38,19 @@ SYSTEM_PROMPT_TEMPLATE = """你是「{role}」，回答依据是一个{corpus}�
 
 回答用中文，结构清晰。"""
 
-# 领域相关的措辞全部走占位符：这些词以前写死在 prompt 里，
-# 换个语料（菜谱）模型就会被告知"这是课程笔记库"、示例 id 也还是 `week5/33…`，
-# 于是它会照着编造不存在的笔记 id。见 RAGSkill.agent_identity。
-DEFAULT_IDENTITY = {
-    "role": "知识库助手",
-    "corpus": "知识库",
-    "id_name": "article_id",
-    "id_hint": "week5/33.重排序.md",
-    "browse_arg": "week",
-    "browse_desc": "",
-    "empty_phrase": "知识库里没有找到相关内容",
-}
+# 领域相关的措辞全部走占位符（默认值在 agent/identity.py，全中性）：
+# 这些词以前写死在 prompt 里，换个语料（菜谱）模型就会被告知"这是课程笔记库"、
+# 示例 id 也还是 `week5/33…`，于是它会照着编造不存在的笔记 id。
 
 
-def build_system_prompt(skill=None) -> str:
-    """用 skill 的领域身份拼系统提示；没有 skill 就用通用默认值。"""
-    identity = dict(DEFAULT_IDENTITY)
-    identity.update(getattr(skill, "agent_identity", None) or {})
-    return SYSTEM_PROMPT_TEMPLATE.format(**identity)
+def build_system_prompt(skill=None, identity: Optional[dict] = None) -> str:
+    """用领域身份拼系统提示。
+
+    `identity` 传进来时优先用它 —— `build_tools()` 会解析出一份**带真实 id_hint** 的身份，
+    `RAGAgent` 把它透传过来，这样示例 id 一定来自语料本身。
+    """
+    merged = dict(identity) if identity else resolve_identity(skill)
+    return SYSTEM_PROMPT_TEMPLATE.format(**merged)
 
 
 # 向后兼容：老代码直接 import SYSTEM_PROMPT 时拿到的是通用版
@@ -100,10 +96,11 @@ class RAGAgent:
     ):
         self.llm = llm
         self.tools = tools
-        # 默认从工具的 registry 上取领域身份（build_tools 会把 skill 挂上去），
-        # 这样换领域**不需要改任何构造点**：prompt 会自己跟着 skill 走。
+        # 领域身份从工具的 registry 上取（build_tools 挂着解析好的 identity + skill），
+        # 这样换领域**不需要改任何构造点**：prompt 与工具描述会自己跟着 skill 走。
+        # identity 里带**真实 id_hint**，优先用它（见 agent/identity.py）。
         self.system_prompt = system_prompt or build_system_prompt(
-            getattr(tools, "skill", None)
+            getattr(tools, "skill", None), getattr(tools, "identity", None)
         )
         self.max_steps = max_steps
 

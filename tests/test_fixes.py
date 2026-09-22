@@ -11,6 +11,7 @@ import contextlib
 import os
 import shutil
 import sys
+import tempfile
 import traceback
 from pathlib import Path
 
@@ -1046,6 +1047,222 @@ def test_judge_probe_refuses_context_recorded_before_truncation_fix():
         over, tokens = p.context_over_budget([{"text": "字" * 20000}], 6000)
         assert over is True and tokens > 6000
         assert p.context_over_budget([{"text": "字" * 20000}], 60000)[0] is False
+
+
+def test_default_metadata_extractor_matches_domain_conventions():
+    """**新领域零配置**：不给 `metadata_extractor` 也要有规范字段，且与既有约定一致。
+
+    以前 `extractor=None` 时 `_validate()` 直接跳过 → 没有 `article_id` 也一路跑完
+    （检索塌成 `[None]`、评测全 0%、**不报错**）。现在默认按路径约定产出。
+
+    `article_id` 必须**含后缀**：notes 的 golden/seeds 里写的 id 就是
+    `week5/29.RAG是怎么工作的.md` 这种形式，默认值换了形式会让现存标注全部对不上。
+    """
+    from langchain_core.documents import Document
+
+    from rag_core.loader import DocumentLoader, make_path_metadata_extractor
+
+    tmp = tempfile.mkdtemp()
+    try:
+        root = Path(tmp)
+        (root / "meat_dish").mkdir()
+        (root / "meat_dish" / "红烧肉.md").write_text("南派做法", encoding="utf-8")
+        (root / "soup").mkdir()
+        (root / "soup" / "陈皮排骨汤.md").write_text("汤", encoding="utf-8")
+
+        docs = DocumentLoader(data_path=str(root), metadata_extractor=None).load()
+        ids = sorted(d.metadata["article_id"] for d in docs)
+
+        assert ids == ["meat_dish/红烧肉.md", "soup/陈皮排骨汤.md"]
+        assert all(d.metadata["title"] for d in docs)
+
+        # 与 notes 的规范字段口径一致（同一份路径，两种 extractor 必须给同样的 id）
+        from rag_core.skills.notes.metadata import notes_metadata_extractor
+
+        fake = Document(
+            page_content="x",
+            metadata={"source": str(root / "meat_dish" / "红烧肉.md")},
+        )
+        assert notes_metadata_extractor(fake)["article_id"] == make_path_metadata_extractor(
+            str(root)
+        )(fake)["article_id"]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_default_extractor_ids_are_unique_for_nested_duplicates():
+    """**回归**：真踩过的重名语料，默认 id 必须天然区分。
+
+    `soup/陈皮排骨汤.md` 与 `soup/陈皮排骨汤/陈皮排骨汤.md` 内容重复；
+    若 id 取 `parts[-2:]` 或不含目录，两者会撞成一个 → `read_article` 指向错的那篇。
+    完整相对路径不会撞。
+    """
+    from rag_core.loader import make_path_metadata_extractor
+    from langchain_core.documents import Document
+
+    tmp = tempfile.mkdtemp()
+    try:
+        root = Path(tmp)
+        nested = root / "soup" / "陈皮排骨汤"
+        nested.mkdir(parents=True)
+        (root / "soup" / "陈皮排骨汤.md").write_text("a", encoding="utf-8")
+        (nested / "陈皮排骨汤.md").write_text("a", encoding="utf-8")
+        ex = make_path_metadata_extractor(str(root))
+        ids = {
+            ex(Document(page_content="a", metadata={"source": str(p)}))["article_id"]
+            for p in (root / "soup" / "陈皮排骨汤.md", nested / "陈皮排骨汤.md")
+        }
+        assert len(ids) == 2, f"重名语料被映射成同一个 id：{ids}"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_default_extractor_still_reports_duplicate_ids():
+    """默认值**不许**把校验关掉：真重复的 id 必须在加载期报错。
+
+    简化配置的前提是"默认值错了要炸"，不是"没配就静默凑合"。
+    """
+    from rag_core.loader import DocumentLoader
+
+    tmp = tempfile.mkdtemp()
+    try:
+        root = Path(tmp)
+        (root / "a").mkdir()
+        (root / "a" / "same.md").write_text("1", encoding="utf-8")
+        (root / "b").mkdir()
+        (root / "b" / "same.md").write_text("2", encoding="utf-8")
+        # 两只手写的 extractor 故意产出同一个 id → 必须报错
+        loader = DocumentLoader(
+            data_path=str(root), metadata_extractor=lambda d: {"article_id": "same", "title": "t"}
+        )
+        try:
+            loader.load()
+            raise AssertionError("规范 id 重复时必须在加载期报错")
+        except ValueError as e:
+            assert "不唯一" in str(e)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_skill_without_prompts_gets_core_default_basic():
+    """**新领域零配置**：不写 prompts.py 也要能生成（核心层自带 `basic`）。
+
+    以前 `generate_stream` 找不到 mode 直接 `KeyError`（这个行为保留），
+    但因此每个领域都被迫写一份 prompts.py —— 「放语料就能跑」不成立。
+    """
+    with _isolated_env():
+        from rag_core.prompts import merge_prompt_registry
+        from rag_core.skill import RAGSkill
+
+        assert "basic" in merge_prompt_registry(None)
+        assert "basic" in merge_prompt_registry({})
+
+        # 领域同名键必须盖住默认值，其余默认键保留
+        custom = merge_prompt_registry({"basic": "自定义", "detail": "详情"})
+        assert custom["basic"] == "自定义"
+        assert custom["detail"] == "详情"
+
+        # 真的能 format（占位符与 generator 的输入键一致）
+        prompt = merge_prompt_registry(None)["basic"]
+        rendered = prompt.format(question="Q", context="C")
+        assert "Q" in str(rendered) and "C" in str(rendered)
+
+        assert RAGSkill(name="brand_new").prompt_registry == {}
+
+
+def test_index_path_is_isolated_per_skill_by_default():
+    """**新领域零配置**：没配 `INDEX_SAVE_PATH` 时索引也要按 skill 隔离。
+
+    缺省是 `./vector_index`，两个领域会抢同一个目录 —— 指纹不同，
+    于是每切换一次领域就全量重建（白等几分钟且看不懂为什么）。
+    """
+    with _isolated_env():
+        from rag_core.pipeline import resolve_index_path
+
+        assert resolve_index_path("./vector_index", "my_kb", explicit=False) == os.path.join(
+            "./vector_index", "my_kb"
+        )
+        # 显式配过的不能被改（两个现成领域都手写了 vector_index/<skill>）
+        assert resolve_index_path("./vector_index/notes", "notes", explicit=True) == (
+            "./vector_index/notes"
+        )
+
+
+def test_identity_id_hint_comes_from_real_corpus_not_a_guess():
+    """**回归**：`id_hint` 必须来自真实语料。
+
+    以前默认值是写死的 `week5/33.重排序.md` —— 换到菜谱领域后，SYSTEM_PROMPT 里
+    仍在给模型看一个笔记格式的示例 id，模型于是**照格式编造** id（实测过）。
+    """
+    with _isolated_env():
+        from agent.identity import ID_HINT_FALLBACK, resolve_identity
+        from rag_core.skill import RAGSkill
+
+        # 领域没声明 → 用真实第一篇
+        ident = resolve_identity(RAGSkill(name="my_kb"), first_article_id="docs/第一篇.md")
+        assert ident["id_hint"] == "docs/第一篇.md"
+        assert "week" not in ident["id_hint"]
+
+        # 语料为空 → 也不能编一个假 id 出来
+        assert resolve_identity(RAGSkill(name="my_kb"))["id_hint"] == ID_HINT_FALLBACK
+
+        # 领域自己声明了就用它的
+        skill = RAGSkill(name="x", agent_identity={"id_hint": "自定义/id"})
+        assert resolve_identity(skill, first_article_id="real/id")["id_hint"] == "自定义/id"
+
+        # 默认身份不含任何领域字段名；browse_arg 为空 = 该领域没有筛选维度
+        base = resolve_identity(RAGSkill(name="my_kb"))
+        assert base["browse_arg"] == ""
+        assert base["corpus"] == "知识库" and base["empty_phrase"]
+
+
+def test_tool_schema_has_no_foreign_domain_parameter():
+    """**回归**：领域没声明筛选维度时，`list_articles` 的 schema 里不许出现别的领域字段。
+
+    以前默认 `browse_arg="week"`，于是菜谱领域的工具 schema 里赫然写着 `week` ——
+    等于在告诉模型"这个菜谱库是按周组织的"。
+    """
+    with _isolated_env():
+        from agent import build_tools
+        from rag_core.skill import RAGSkill
+
+        class _Idx:
+            def __init__(self, skill):
+                self.skill = skill
+                self.documents = [
+                    Document(page_content="正文", metadata={"article_id": "a/b.md", "title": "B"})
+                ]
+
+            def retrieve(self, q, top_k=5):
+                return []
+
+        tools = build_tools(_Idx(RAGSkill(name="my_kb")))
+        schema = {t["function"]["name"]: t["function"] for t in tools.schemas()}
+
+        assert schema["list_articles"]["parameters"]["properties"] == {}, (
+            "没有筛选维度的领域不该出现任何过滤参数"
+        )
+        # id_hint 来自真实语料
+        assert schema["read_article"]["parameters"]["properties"]["article_id"][
+            "description"
+        ].endswith("a/b.md")
+        assert tools.identity["id_hint"] == "a/b.md"
+        # SYSTEM_PROMPT 跟着走，且不再出现笔记味措辞
+        from agent import RAGAgent
+        from rag_core.skill import RAGSkill as _S
+
+        class _LLM:
+            def chat(self, messages):
+                raise AssertionError("不该真的调用")
+
+        agent = RAGAgent(_LLM(), tools)
+        assert "a/b.md" in agent.system_prompt
+        assert "笔记" not in agent.system_prompt
+
+        # 声明了筛选维度的领域仍然带参数（notes=week / recipe=category）
+        tools2 = build_tools(_Idx(_S(name="n", agent_identity={"browse_arg": "week"})))
+        props2 = [t["function"]["parameters"]["properties"] for t in tools2.schemas()]
+        assert any("week" in p for p in props2)
 
 
 def test_plain_answer_is_not_abstention():

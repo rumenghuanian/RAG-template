@@ -1,5 +1,6 @@
 """通用 RAG Pipeline - 组装 loader/splitter/indexer/retriever/generator"""
 import logging
+import os
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 from langchain_core.documents import Document
@@ -8,6 +9,7 @@ from .config import RAGConfig
 from .generator import GenerationIntegrationModule
 from .indexer import IndexConstructionModule
 from .loader import DocumentLoader
+from .prompts import merge_prompt_registry
 from .reranker import CrossEncoderReranker
 from .retriever import RetrievalOptimizationModule
 from .skill import RAGSkill
@@ -16,10 +18,36 @@ from .splitter import DocumentSplitter
 logger = logging.getLogger(__name__)
 
 
+def resolve_index_path(base: str, skill_name: str, explicit: bool) -> str:
+    """没显式配 `INDEX_SAVE_PATH` 时，把索引按 skill 隔离到子目录。
+
+    为什么要变成默认值：`INDEX_SAVE_PATH` 缺省是 `./vector_index`，两个领域就会抢同一个
+    目录 —— 指纹不同，于是**每切换一次领域就全量重建一次索引**（不是静默出错，但白等几分钟
+    且看不懂为什么）。两个现成领域都是**手写**隔离的（`vector_index/notes`、
+    `vector_index/recipe`），说明"靠人记住"这条约定不可靠。
+
+    纯函数（`explicit` 由调用方从环境读），方便单测。
+    """
+    if explicit:
+        return base
+    return os.path.join(base, skill_name)
+
+
 class BasicRAGPipeline:
     def __init__(self, config: RAGConfig, skill: RAGSkill):
         self.config = config
         self.skill = skill
+
+        # 索引目录按 skill 隔离（未显式配置时）
+        resolved = resolve_index_path(
+            config.index_save_path, skill.name, explicit=bool(os.getenv("INDEX_SAVE_PATH"))
+        )
+        if resolved != config.index_save_path:
+            logger.info("未配置 INDEX_SAVE_PATH，索引按 skill 隔离到 %s", resolved)
+            config.index_save_path = resolved
+
+        # 默认 prompt 打底 + 领域覆盖（核心层自带 basic，新领域可以不写 prompts.py）
+        self.prompts: Dict[str, Any] = merge_prompt_registry(skill.prompt_registry)
 
         self.documents: List[Document] = []
         self.chunks: List[Document] = []
@@ -90,7 +118,7 @@ class BasicRAGPipeline:
             api_key=self.config.llm_api_key,
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens,
-            prompt_registry=self.skill.prompt_registry,
+            prompt_registry=self.prompts,
             context_max_tokens=self.config.context_max_tokens,
         )
 
@@ -254,8 +282,11 @@ class BasicRAGPipeline:
         路由 -> prompt mode 映射。
         Skill 可通过 prompt_registry 里注册的 key 覆盖默认行为。
         """
-        if route in self.skill.prompt_registry:
+        registry = getattr(self, "prompts", None) or merge_prompt_registry(
+            self.skill.prompt_registry
+        )
+        if route in registry:
             return route
-        # 默认映射
+        # 默认映射（`basic` 由 merge_prompt_registry 保证一定存在）
         default_map = {"list": "basic", "detail": "basic", "general": "basic"}
         return default_map.get(route, "basic")

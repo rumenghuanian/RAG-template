@@ -20,6 +20,7 @@ from agent.llm import LLMReply, ToolCall  # noqa: E402
 from agent.loop import RAGAgent  # noqa: E402
 from agent.memory import ConversationMemory  # noqa: E402
 from agent.tools import ToolRegistry, build_tools  # noqa: E402
+from rag_core.skill import RAGSkill  # noqa: E402
 from rag_core.skills.notes.metadata import notes_metadata_extractor  # noqa: E402
 
 CORPUS = Path(__file__).resolve().parent.parent.parent / "Agent-100-Days"
@@ -74,12 +75,20 @@ DOCS = [
 
 
 class FakeIndex:
-    """鸭子类型替身：build_tools 只用到 .documents 和 .retrieve。"""
+    """鸭子类型替身：build_tools 只用到 .documents / .retrieve / .skill。
+
+    `.skill` 现在是**必须的**：工具参数名与 prompt 措辞都从领域身份来，
+    没有 skill 就没有"按 week 筛选"这个维度（也不该凭空出现 —— 见 test_fixes 里
+    「schema 里不许出现别的领域字段」那条）。这里声明成 notes 的最小身份。
+    """
 
     def __init__(self, hits=None, docs=None):
         self.documents = docs if docs is not None else DOCS
         self._hits = hits if hits is not None else DOCS
         self.queries = []
+        self.skill = RAGSkill(
+            name="notes", agent_identity={"browse_arg": "week", "browse_desc": "，可按周筛选"}
+        )
 
     def retrieve(self, question, top_k=None):
         self.queries.append(question)

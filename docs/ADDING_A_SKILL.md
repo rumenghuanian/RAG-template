@@ -9,20 +9,50 @@
 
 ## 0. 一个领域 skill 到底要提供什么
 
-`RAGSkill` 有 6 个钩子，**只有前两个是必须的**：
+`RAGSkill` 有 6 个钩子，**现在全部有默认值 —— 最小 skill 只需要一个名字**：
 
-| 钩子 | 必须? | 作用 |
+| 钩子 | 默认值 | 你什么时候才需要自己写 |
 |---|---|---|
-| `metadata_extractor` | ✅ | `Document -> dict`。**必须产出规范字段 `article_id` / `title`** |
-| `prompt_registry` | ✅ | `mode -> ChatPromptTemplate`，**至少要有一个 `basic`** |
-| `splitter_headers` | 建议 | Markdown 分块用哪些标题层级 |
-| `agent_identity` | 建议 | Agent 的角色/语料名/id 示例（决定 SYSTEM_PROMPT 与工具描述） |
-| `query_strategy` | 可选 | 路由 / 改写 / 过滤条件提取；不提供就退化成"直接检索" |
-| `required_metadata` | 有默认值 | 规范字段清单，默认 `("article_id", "title")` |
+| `metadata_extractor` | **路径约定**：`article_id` = 相对语料根的完整路径（含后缀），`title` = 文件名 | 想要更短的 id，或要**筛选字段**（分类/难度…） |
+| `prompt_registry` | 核心层自带 `basic`（`rag_core/prompts.py`） | 要改措辞 / 加 mode（路由名命中哪个 key 就用哪个） |
+| `splitter_headers` | `#` / `##` / `###` | 语料的标题层级不同 |
+| `agent_identity` | 中性默认 + **把真实首篇的 id 当 `id_hint`** | 要改 Agent 的角色/语料名，或要能按某字段筛选 |
+| `query_strategy` | 无（退化成"直接检索"） | 要路由 / 改写 / 过滤条件 |
+| `required_metadata` | `("article_id", "title")` | 基本不用动 |
+
+**为什么默认值必须存在（而不是"没配就算了"）**：以前 `metadata_extractor=None` 时，
+加载期校验被整个跳过 —— 没有 `article_id` 也一路跑完，检索去重塌成 `[None]`、
+评测 hit@5 全 0%，**而一行错误都不报**；`prompt_registry` 缺失则是直接 `KeyError`。
+于是"接一个新领域"实际被迫写 3 个文件、还要自己想清楚 id 规则 —— 那不是"把语料丢进来"。
+默认值补齐后：**没有领域契约的语料也能跑，真正坏了的东西（id 缺失/重复）照样在加载期报错。**
+
+> 一条边界：默认 id 是**相对语料根的完整路径**（如 `dishes/aquatic/咖喱炒蟹.md`）。
+> 想要更短、更好看的 id（像 recipe 的 `aquatic/咖喱炒蟹.md`）就自己写 extractor，
+> **代价是唯一性要你自己保证** —— 这正是 recipe 保留自己的 extractor 的原因。
 
 ---
 
-## 1. 最小可用 skill（复制就能改）
+## 1. 零配置版（30 秒）
+
+```
+rag_core/skills/my_domain/
+└── __init__.py      # 就这一个文件
+```
+
+```python
+from ...skill import RAGSkill
+
+
+def build_my_skill() -> RAGSkill:
+    return RAGSkill(name="my_domain")     # 6 个钩子全走默认值
+```
+
+然后在 `rag_core/skills/__init__.py` 注册一行、写一个 `.env.my_domain`（**只写 `DATA_PATH` 就够**），
+检索层与 Agent 层评测就能跑。**`metadata.py` / `prompts.py` 需要时再加** —— 见下一节。
+
+---
+
+## 1b. 完整版（需要领域字段或自定义 prompt 时）
 
 ```
 rag_core/skills/my_domain/
@@ -120,8 +150,9 @@ SKILLS = {
 ```ini
 # .env.my_domain  —— 每个 skill 一份，env / 索引 / 标注 / 基线全部按 skill 隔离
 DATA_PATH=./data/my_domain
-FILE_GLOB=**/*.md
-INDEX_SAVE_PATH=./vector_index/my_domain
+# 下面这些都有默认值，需要时才写：
+# FILE_GLOB=**/*.md                  （默认 *.md）
+# INDEX_SAVE_PATH=./vector_index/my_domain   （不写就自动隔离到 vector_index/<skill>）
 EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
 EMBEDDING_DEVICE=cpu
 LLM_MODEL=deepseek-flash
@@ -192,16 +223,17 @@ python eval\run_all.py --skip-run          # 应输出「结论：PASS ✓」
 
 | # | 坑 | 后果 |
 |---|---|---|
-| 1 | `metadata_extractor` 不产出 `article_id` | 检索去重塌成一条、引用匹配全失效、`read_article(None)` **返回错文档**。现在**加载期就报错**拦住 |
+| 1 | 自己写了 `metadata_extractor` 却不产出 `article_id` | 检索去重塌成一条、引用匹配全失效、`read_article(None)` **返回错文档**。现在**加载期就报错**拦住（不写 extractor 则走默认路径约定，不会有这个问题） |
 | 2 | `article_id` 重复 | 同上。加载期会报出是哪两个文件撞了 |
 | 3 | 改了 `metadata_extractor` 却没重建索引 | 向量路仍返回**旧元数据**（索引 docstore 里存的），而 BM25 路用新文档 → 两条路不一致。指纹已含领域元数据，会自动重建 |
-| 4 | 领域文案写死在通用层 | 模型被告知"这是课程笔记库"、照 `week5/33…` 编造不存在的 id。要用 `agent_identity` |
-| 5 | `list_articles` 参数名与 skill 不一致 | schema 让模型传 `category`、函数只认 `week` → TypeError。用 `browse_arg` / `browse_field` |
+| 4 | 领域文案写死在通用层 | 模型被告知"这是课程笔记库"、照 `week5/33…` 编造不存在的 id。要用 `agent_identity`（默认值已是中性，且 `id_hint` 取自真实语料） |
+| 5 | `list_articles` 参数名与 skill 不一致 | schema 让模型传 `category`、函数只认 `week` → TypeError。用 `browse_arg` / `browse_field`；**不声明就没有这个参数** |
 | 6 | 闸门标注只写了 `absent`、没有 `mentioned` | 以前会 `ZeroDivisionError` 崩掉整个评测（空分组），现在已跳过空组 |
 | 7 | 标注类别口径各脚本各抄一份 | 同一个 bug 只在一处被修好 → 报告里出现恒为 0 的假指标。口径只有一份，在 `eval/scoring.py` |
 | 8 | 换语料/改标注后直接和旧基线比大小 | 题集变了，指标本来就会变。`run_all.py` 的标注指纹保护会拒绝硬比并提示重新立基线 |
 | 9 | CPU 上开重排 | 整池重排约 24 秒/次检索。`RERANK_ENABLED=false` |
 | 10 | 拿 gold 当参照判「忠实度」 | 模型实际读 2~5 篇，引用别篇会被判成编造。参照物要用 `query_with_sources()` 返回的**实际喂进 prompt 的正文** |
+| 11 | 自己写短 id（如 `parts[-2:]`）又没检查唯一性 | 嵌套语料会撞：`soup/陈皮排骨汤.md` 与 `soup/陈皮排骨汤/陈皮排骨汤.md`（内容还重复）。默认的完整路径不会撞；要短 id 就得自己兜住唯一性 |
 
 ---
 
@@ -221,6 +253,15 @@ python eval\run_all.py --skip-run          # 应输出「结论：PASS ✓」
 
 - **已验证**：`notes`（105 篇课程笔记，44 条完整评测标注）与 `recipe`（322 篇菜谱）两个领域，
   同一套引擎跑通；recipe 侧用的是 6 条**诊断集**（只够验证链路，不足以评价效果）。
-- **未验证**：第三个领域；多语言语料；`query_strategy` 在两个领域以上的通用性。
+- **默认值已验证不会改动现有两个领域**：notes 用默认 extractor 得到的 105 个 `article_id`
+  与它自己的 extractor **完全相同**、`golden.jsonl` 78 条 expect 全部对得上、SYSTEM_PROMPT
+  逐字节未变；recipe 仍是 322 篇 / 322 个唯一 id、`golden.recipe.jsonl` 6 条全对。
+- **零配置路径已验证**：`python eval/verify_zero_config.py` 造一个**临时第三领域**
+  （3 篇任意 Markdown，只写 `RAGSkill(name=...)`，没有 metadata.py / prompts.py / agent_identity），
+  建索引 → 检索命中 → prompt 用默认 `basic` → 工具 schema 里没有别人的筛选参数 →
+  SYSTEM_PROMPT 里的示例 id 取自真实语料。零 LLM 成本。
+- **仍未验证**：**带真实标注**的第三个领域（这个脚本只验到"能跑"，没验"效果好"）；
+  多语言语料；`query_strategy` 在两个领域以上的通用性；PDF/HTML 这类非 Markdown 语料
+  （分块只有"按标题层级"一种实现，换分块器需要新增钩子）。
 - **已知取舍**：语料不进仓库（第三方内容），所以 clone 下来需要自备数据；
-  索引是全量重建（没有单篇增删）；重排在 CPU 上不可用。
+  索引是全量重建（没有单篇增删）；重排在 CPU 上不可用；id 默认带后缀、看起来比 recipe 现在的短 id 长。

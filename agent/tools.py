@@ -9,6 +9,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
+from .identity import resolve_identity
+
 logger = logging.getLogger(__name__)
 
 SNIPPET_CHARS = 600
@@ -35,11 +37,13 @@ class Tool:
 
 
 class ToolRegistry:
-    def __init__(self, tools: List[Tool], skill=None):
+    def __init__(self, tools: List[Tool], skill=None, identity: Optional[Dict[str, Any]] = None):
         self._tools = {t.name: t for t in tools}
         # 领域身份挂在这里，`RAGAgent` 会自动读取它来拼 SYSTEM_PROMPT ——
         # 这样换领域不用改任何构造点
         self.skill = skill
+        # 解析好的身份（含真实 id_hint）。存下来而不是让 loop 再猜一遍默认值。
+        self.identity = identity or resolve_identity(skill)
 
     def names(self) -> List[str]:
         return list(self._tools)
@@ -89,11 +93,11 @@ def build_tools(index, min_relevance: float = 0.65) -> ToolRegistry:
                 "max_similarity": round(best, 3),
                 "note": (
                     f"语义检索没找到足够相关的内容（最相似 {best:.2f}，阈值 {min_relevance:.2f}）。"
-                    "有两种可能：① 笔记里确实没有这个主题；"
-                    "② 这个问题不适合语义检索，比如「第几周讲了什么」这类结构性提问 "
+                    f"有两种可能：① {corpus}里确实没有这个主题；"
+                    "② 这个问题不适合语义检索，比如「按分类/编号列举」这类结构性提问 "
                     "（实测它的相似度甚至比语料外的问题还低）。"
-                    "请先换个更具体的关键词重试，或用 list_articles 看文章清单；"
-                    "两者都没有结果，就直接告诉用户笔记里没有，不要编造。"
+                    f"请先换个更具体的关键词重试，或用 list_articles 看清单；"
+                    f"两者都没有结果，就直接告诉用户{corpus}里没有，不要编造。"
                 ),
             }
         results = [
@@ -121,11 +125,18 @@ def build_tools(index, min_relevance: float = 0.65) -> ToolRegistry:
         # 参数名由 skill 决定（notes 是 week、recipe 是 category），所以这里吃 **kwargs。
         # 直接把 schema 里的名字改掉、函数还写 `week=None` 的话，
         # 模型按 schema 传 category 会 TypeError —— 自己引入的坑，别踩。
-        scope = kwargs.get(browse_arg)
+        # 领域没声明 `browse_arg` 时 schema 里根本没有参数，kwargs 为空 = 列全部。
+        scope = kwargs.get(browse_arg) if browse_arg else None
         items = []
         for d in sorted(
             documents,
-            key=lambda x: (x.metadata.get("week") or 0, x.metadata.get("article_no") or 0),
+            # 领域字段（week/article_no）有就按它排，没有就退化成按 id 排 ——
+            # 以前键写死成 notes 的字段，别的领域全是 (0,0)，顺序变成"看运气"。
+            key=lambda x: (
+                x.metadata.get("week") or 0,
+                x.metadata.get("article_no") or 0,
+                str(x.metadata.get("article_id") or ""),
+            ),
         ):
             m = d.metadata
             if scope is not None and str(m.get(browse_field)) != str(scope):
@@ -139,18 +150,43 @@ def build_tools(index, min_relevance: float = 0.65) -> ToolRegistry:
             )
         return {"count": len(items), "articles": items}
 
-    # 领域措辞全部来自 skill.agent_identity：写死会让模型在换领域后
+    # 领域措辞全部来自解析好的 identity（agent/identity.py）：写死会让模型在换领域后
     # 仍被告知"这是课程笔记库"、照着一个不存在的 id 格式去编（实测过）。
-    identity = dict(getattr(getattr(index, "skill", None), "agent_identity", None) or {})
-    corpus = identity.get("corpus", "知识库")
-    id_name = identity.get("id_name", "article_id")
-    id_hint = identity.get("id_hint", "week5/29.RAG是怎么工作的.md")
-    browse_arg = identity.get("browse_arg", "week")
-    browse_field = identity.get("browse_field", browse_arg)
-    browse_desc = identity.get("browse_desc", "")
+    # id_hint 用**语料里真实的第一篇 id**，不写死示例。
+    identity = resolve_identity(
+        getattr(index, "skill", None),
+        first_article_id=next(
+            (
+                str(d.metadata.get("article_id"))
+                for d in documents
+                if d.metadata.get("article_id")
+            ),
+            None,
+        ),
+    )
+    corpus = identity["corpus"]
+    id_name = identity["id_name"]
+    id_hint = identity["id_hint"]
+    browse_arg = identity["browse_arg"]
+    browse_field = identity.get("browse_field") or browse_arg
+    browse_desc = identity["browse_desc"]
+
+    # 没声明筛选维度就不要这个参数：schema 里出现一个别的领域的字段名
+    # （以前默认 "week"）等于告诉模型"这个知识库是按周组织的"。
+    list_parameters: Dict[str, Any] = {"type": "object", "properties": {}, "required": []}
+    if browse_arg:
+        list_parameters["properties"][browse_arg] = {
+            "type": "string",
+            "description": (
+                f"范围筛选{browse_desc}。不传则列出全部。"
+                if browse_desc
+                else "范围筛选。不传则列出全部。"
+            ),
+        }
 
     return ToolRegistry(
         skill=getattr(index, "skill", None),
+        identity=identity,
         tools=[
             Tool(
                 name="search_notes",
@@ -190,20 +226,7 @@ def build_tools(index, min_relevance: float = 0.65) -> ToolRegistry:
             Tool(
                 name="list_articles",
                 description=f"列出{corpus}的清单{browse_desc}。适合回答「都有哪些」这类问题。",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        browse_arg: {
-                            "type": "string",
-                            "description": (
-                                f"范围筛选{browse_desc}。不传则列出全部。"
-                                if browse_desc
-                                else "（本领域无筛选维度，不传即可）"
-                            ),
-                        }
-                    },
-                    "required": [],
-                },
+                parameters=list_parameters,
                 func=list_articles,
             ),
         ],

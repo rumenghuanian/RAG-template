@@ -10,7 +10,7 @@
 
 | 维度 | 说明 |
 |---|---|
-| 领域可插拔 | `notes`（105 篇课程笔记 / 1168 块）、`recipe`（322 篇菜谱）—— 同一套引擎，skill 只提供元数据映射、分块策略、prompt、查询策略 |
+| 领域可插拔 | `notes`（105 篇课程笔记 / 1168 块）、`recipe`（322 篇菜谱）—— 同一套引擎；skill 的 6 个钩子**都有默认值**，新领域最少只写一个名字 |
 | 检索 | 向量 + BM25 混合 → RRF 融合（按文档频率自适应权重）→ cross-encoder 重排 → 按文章去重；父子分块（子块检索、父文档进上下文） |
 | 生成 | 单轮 RAG（`pipeline.query`）与 ReAct Agent（多步检索 + 引用收集 + 转人工判定）两条路 |
 | 服务 | FastAPI（`/health` `/query` `/agent`），启动时预热重排模型 |
@@ -95,8 +95,17 @@ python -m pytest tests/ -q      # 130 项
 > 产出规范字段 `article_id` / `title`（缺了或重了**加载期就会报错**，不会静默失效），就能直接跑。
 
 **接一个新领域**：见 [`docs/ADDING_A_SKILL.md`](docs/ADDING_A_SKILL.md) ——
-从空目录到跑出评测数字的五步，外加 10 条「别踩这些」（全是真踩过的）。
-这个模板的"可插拔"不是口号：已在 `notes`（105 篇笔记）与 `recipe`（322 篇菜谱）上跑通。
+**零配置版只要一个文件**（`RAGSkill(name="my_domain")`）+ 注册一行 + 一个 `.env`
+（只写 `DATA_PATH`；索引默认隔离到 `vector_index/<skill>`），`metadata.py` / `prompts.py`
+**需要时才加**。
+
+这个模板的"可插拔"不是口号，而且**可复现**：
+- 已在 `notes`（105 篇笔记）与 `recipe`（322 篇菜谱）上跑通；
+- `python eval/verify_zero_config.py` 造一个**临时第三领域**（3 篇任意 Markdown、只写一个名字），
+  验证建索引 → 检索命中 → 默认 prompt → 工具 schema 无外来参数（零 LLM 成本）。
+
+> 一条边界：**"导入即可用" ≠ "导入即可量化"**。要出数字仍然得写
+> `eval/seeds.<skill>.jsonl` —— 判断"这个问题语料答得了吗"是人的事，自动化不了。
 
 ---
 
@@ -1002,6 +1011,7 @@ python eval/judge_probe.py                # 裁判校准探针：把已知忠实
                                           # （自动挑已知忠实的种子；旧报告会被按 token 预算拒跑）
 python eval/build_human_review.py         # 生成人工复核表 eval/human_review.html（不上传，本地标）
 python eval/score_human_review.py         # 标完导出 human_labels.json 后：一致率 + 混淆矩阵
+python eval/verify_zero_config.py         # 零配置接新领域：造临时第三领域验证「只写一个名字能跑」
 ```
 
 ### 两个臂，以及一个暴露出来的产品问题
