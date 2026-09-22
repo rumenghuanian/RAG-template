@@ -78,21 +78,38 @@
 
 ## 30 秒跑起来
 
+**先不配任何语料，看它真的在跑**（仓库自带一份示例语料，`demo` 领域）：
+
 ```powershell
+git clone https://github.com/rumenghuanian/RAG-template.git; cd RAG-template
 python -m venv .venv; .\.venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env          # 填 LLM_API_KEY / DATA_PATH（语料需自备，见下）
 
-python main_agent.py            # Agent 问答
-python eval/build_golden.py     # 校验标注
-python eval/run_eval.py         # 检索层评测（零 LLM 成本）
-python eval/run_all.py          # 三层回归门禁（退化则退出码 1）
-python -m pytest tests/ -q      # 130 项
+$env:EVAL_SKILL="demo"
+python eval\run_eval.py       # 检索层：easy hit@5 100%、域外问题被余弦拦住（零 LLM 成本）
+python eval\run_agent_eval.py # Agent 对照层：闸门题 needs_human 1/1（同样零 LLM 成本）
+python -m pytest tests/ -q    # 137 项
 ```
 
-> **语料自备**：两份语料都是第三方内容，没有随仓库分发。
-> 只要满足 `DATA_PATH` + `FILE_GLOB` 指向一批 `.md`，并让 skill 的 `metadata_extractor`
-> 产出规范字段 `article_id` / `title`（缺了或重了**加载期就会报错**，不会静默失效），就能直接跑。
+示例语料是 [`examples/demo_corpus/`](examples/demo_corpus)（两篇自写的手冲咖啡文档，
+**只有 2 条标注**，够证明「装好依赖 → 出数字」这条路通，不代表效果）。
+
+**换成你自己的语料**：
+
+```powershell
+copy .env.example .env        # 改 DATA_PATH 指向你的 markdown 目录（其余变量都有默认值）
+python main_agent.py          # Agent 问答（生成层要 LLM_API_KEY）
+python eval\build_golden.py   # 校验你自己的标注
+python eval\run_eval.py       # 跑你自己的数字
+python eval\run_all.py        # 三层回归门禁（退化则退出码 1）
+```
+
+> **语料自备**：两份真实语料（课程笔记 / 菜谱）都是第三方内容，没有随仓库分发 ——
+> 所以 `clone` 下来**直接跑 `run_eval.py`（默认 notes）会报「数据目录不存在」**，这不是 bug。
+> 只要满足 `DATA_PATH` + `FILE_GLOB` 指向一批 `.md`，字段规范（`article_id` / `title`）
+> 缺了或重了**加载期就会报错**、不会静默失效，就能直接跑。
+> 什么都要自己造吗？**只有语料和标注**：`LLM_API_KEY` 只有生成层要（检索/Agent 两层零成本），
+> 索引目录、prompt、元数据映射、领域身份全都有默认值。
 
 **接一个新领域**：见 [`docs/ADDING_A_SKILL.md`](docs/ADDING_A_SKILL.md) ——
 **零配置版只要一个文件**（`RAGSkill(name="my_domain")`）+ 注册一行 + 一个 `.env`
@@ -100,6 +117,8 @@ python -m pytest tests/ -q      # 130 项
 **需要时才加**。
 
 这个模板的"可插拔"不是口号，而且**可复现**：
+- `rag_core/skills/demo/__init__.py` 就是**零配置的活例子**——整个文件只有一个
+  `RAGSkill(name="demo")`，配 `examples/demo_corpus/` 与 `.env.demo` 就能跑出数字；
 - 已在 `notes`（105 篇笔记）与 `recipe`（322 篇菜谱）上跑通；
 - `python eval/verify_zero_config.py` 造一个**临时第三领域**（3 篇任意 Markdown、只写一个名字），
   验证建索引 → 检索命中 → 默认 prompt → 工具 schema 无外来参数（零 LLM 成本）。
@@ -117,13 +136,16 @@ python -m pytest tests/ -q      # 130 项
 
 ```
 basic_rag/                          # 项目根
-├── data/
+├── data/                           # 你自己的语料放这里（第三方语料不进仓库，见 .gitignore）
 │   └── cook/
 │       └── dishes/                 # ← 你的 markdown 数据放这里
 │           ├── meat_dish/
 │           ├── vegetable_dish/
 │           ├── soup/
 │           └── ...
+├── examples/
+│   └── demo_corpus/                # ← 自带的示例语料（自写，可随仓库分发）
+│       └── coffee/                 #   配合 EVAL_SKILL=demo 用，clone 下来即可跑出数字
 ├── vector_index/                   # 索引自动生成
 │   └── .fingerprint                # 数据指纹（自动生成，用于判断是否重建）
 ├── .cache/                         # HuggingFace 模型缓存（如果配了 HF_HOME）

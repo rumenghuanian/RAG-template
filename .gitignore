@@ -3,6 +3,8 @@
 .env.*
 !.env.example
 !.env.notes.example
+# 自带示例语料的配置：必须进仓库，否则别人 clone 下来没法一键跑 demo
+!.env.demo
 
 # 生成的索引
 vector_index/

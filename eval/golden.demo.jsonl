@@ -1,0 +1,2 @@
+{"kind": "easy", "question": "手冲咖啡的水温该用多少度？", "expect": ["coffee/手冲参数.md"], "note": "演示用：答案就在示例语料里，hit@5 应当 100%"}
+{"kind": "absent", "question": "怎么用 COBOL 写银行核心系统？", "expect": [], "probe": {"absent": ["COBOL"]}, "note": "far"}

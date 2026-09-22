@@ -34,6 +34,19 @@
 
 ## 1. 零配置版（30 秒）
 
+**仓库里已经有一个可运行的例子**，照它写就行：
+
+```
+rag_core/skills/demo/__init__.py     # 整个文件只有一行 RAGSkill(name="demo")
+examples/demo_corpus/coffee/*.md     # 两篇自写示例文档
+.env.demo                            # 只有 DATA_PATH / FILE_GLOB / RERANK_ENABLED
+eval/seeds.demo.jsonl                # 2 条标注（1 条可答 + 1 条闸门）
+```
+
+跑它：`$env:EVAL_SKILL="demo"; python eval\run_eval.py`（零 LLM 成本，先建索引约几秒）。
+
+你自己加一个领域，形状完全一样：
+
 ```
 rag_core/skills/my_domain/
 └── __init__.py      # 就这一个文件
@@ -47,8 +60,9 @@ def build_my_skill() -> RAGSkill:
     return RAGSkill(name="my_domain")     # 6 个钩子全走默认值
 ```
 
-然后在 `rag_core/skills/__init__.py` 注册一行、写一个 `.env.my_domain`（**只写 `DATA_PATH` 就够**），
-检索层与 Agent 层评测就能跑。**`metadata.py` / `prompts.py` 需要时再加** —— 见下一节。
+然后在 `rag_core/skills/__init__.py` 注册一行、写一个 `.env.my_domain`（**只写 `DATA_PATH` 就够**，
+索引会自动隔离到 `vector_index/my_domain`），检索层与 Agent 层评测就能跑。
+**`metadata.py` / `prompts.py` 需要时再加** —— 见下一节。
 
 ---
 

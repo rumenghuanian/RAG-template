@@ -1265,6 +1265,34 @@ def test_tool_schema_has_no_foreign_domain_parameter():
         assert any("week" in p for p in props2)
 
 
+def test_demo_skill_is_the_zero_config_example():
+    """自带的 `demo` 领域必须**真的是零配置**，否则 README 里那句"活例子"就是假的。
+
+    它同时是别人 clone 下来唯一能立刻跑出数字的东西：语料（`examples/demo_corpus`）、
+    配置（`.env.demo`）、标注（`seeds.demo.jsonl`）三样都得在仓库里，
+    而且 `.env.demo` 不能被 `.gitignore` 的 `.env.*` 规则挡掉（真挡掉过一次的写法）。
+    """
+    root = Path(__file__).resolve().parent.parent
+
+    with _isolated_env():
+        from rag_core.skills import SKILLS
+
+        assert "demo" in SKILLS, "demo 未注册"
+        skill = SKILLS["demo"]()
+        assert skill.metadata_extractor is None, "零配置例子不该自带 extractor"
+        assert skill.prompt_registry == {}, "零配置例子不该自带 prompt"
+        assert not (skill.agent_identity or {}), "零配置例子不该自带领域身份"
+
+    for rel in ("examples/demo_corpus/coffee", ".env.demo", "eval/seeds.demo.jsonl"):
+        assert (root / rel).exists(), f"零配置例子缺文件：{rel}"
+
+    from rag_core.loader import DocumentLoader
+
+    docs = DocumentLoader(str(root / "examples" / "demo_corpus"), "**/*.md").load()
+    ids = {d.metadata["article_id"] for d in docs}
+    assert ids == {"coffee/手冲参数.md", "coffee/器具.md"}, ids
+
+
 def test_plain_answer_is_not_abstention():
     got, _ = scoring.abstained("思维链就是强制模型输出推理过程。" * 10)
     assert got is False
