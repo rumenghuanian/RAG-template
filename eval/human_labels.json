@@ -1,0 +1,183 @@
+{
+  "fingerprint": "c773aa98a671",
+  "seed": 20260922,
+  "judged_ok": 44,
+  "labels": {
+    "single#08": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#14": {
+      "label": "拿不准",
+      "note": "1.2只是讲述原因并未讲述如何解决问题"
+    },
+    "single#12": {
+      "label": "拿不准",
+      "note": "为什么切碎的第一点只是对chucking的描述而不是原因（应该也可以吧）"
+    },
+    "single#16": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#35": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#21": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#59": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#09": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#26": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#22": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#11": {
+      "label": "拿不准",
+      "note": "应该加个前提就是为什么用Rerank而不是直接定死了用重排（因为并不是所有场景都需要重排），可以加个前提：要解决这个问题，前提是已经通过检索（如向量检索、关键词检索）拿到了一批候选段落。在此基础上，可以分两步：先用 Rerank 重排，再控制进入 Context 的顺序和位置。"
+    },
+    "single#19": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#31": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#15": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#62": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#10": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#06": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#13": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#25": {
+      "label": "拿不准",
+      "note": "既然没有对应的信息是不是不要输出有关的内容好一点？"
+    },
+    "single#56": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#04": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#32": {
+      "label": "忠实",
+      "note": "这里就是很好的例子有关的内容答，不存在的内容直接不讲就行"
+    },
+    "single#18": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#37": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#61": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#20": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#17": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#02": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#23": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#29": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#28": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#27": {
+      "label": "拿不准",
+      "note": "还是跟之前一样的问题如果没有就没必要输出靠近的内容"
+    },
+    "single#30": {
+      "label": "拿不准",
+      "note": "既然2号标题他是有代码的解释为什么不是在1之前呢？1好像仅仅只是概念吧"
+    },
+    "single#38": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#03": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#34": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#36": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#05": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#60": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#01": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#33": {
+      "label": "忠实",
+      "note": "如果只有一半内容这样子回答即可"
+    },
+    "single#07": {
+      "label": "忠实",
+      "note": ""
+    },
+    "single#24": {
+      "label": "忠实",
+      "note": "这个是笔记内容缺失，但这是一个正确且诚实的回答，但它也存在明显的局限性。"
+    },
+    "single#77": {
+      "label": "忠实",
+      "note": ""
+    }
+  }
+}

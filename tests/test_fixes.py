@@ -987,6 +987,67 @@ def test_judge_reference_keeps_every_source_article():
         assert g._fit_reference([{"article_id": "e", "text": ""}], cap=9000) == ""
 
 
+def test_judge_probe_seed_must_be_known_faithful():
+    """**回归**：探针的种子必须是「已知忠实」的答案。
+
+    踩过：探针拿一份旧报告当种子，那条答案在**当前**口径下其实不忠实 → ① 判 `False`
+    → 输出「裁判校准不过关」，看着像裁判坏了，其实是种子坏了（假警报）。
+    所以 `--index` 指到不忠实的条目要**明确报错**，不指定时只挑已知忠实的。
+    """
+    with _isolated_env():
+        import judge_probe as p
+
+        def _row(faithful, ctx=True, answer="答"):
+            arm = {"answer": answer, "judge": {"faithful": faithful}}
+            if ctx:
+                arm["context_texts"] = [{"article_id": "a.md", "text": "正文"}]
+            return {"kind": "easy", "question": "q", "arms": {"single": arm}}
+
+        detail = [
+            _row(False),                 # 0：不忠实 → 不能当种子
+            _row(None),                  # 1：裁判没判定 → 不能当种子
+            _row(True, ctx=False),       # 2：忠实但没有录上下文 → 不能当种子
+            _row(True),                  # 3：唯一可用
+        ]
+        assert p.seed_candidates(detail) == [3]
+        assert p.pick_seed(detail) == 3, "不指定 index 时应当自动挑已知忠实的那条"
+        assert p.pick_seed(detail, index=3) == 3
+
+        for bad in (0, 1):
+            try:
+                p.pick_seed(detail, index=bad)
+                raise AssertionError(f"第 {bad} 条不是已知忠实，不该被选为种子")
+            except SystemExit:
+                pass
+        try:
+            p.pick_seed(detail, index=2)
+            raise AssertionError("没有 recorded context 的条目不该被选为种子")
+        except SystemExit:
+            pass
+        try:
+            p.pick_seed([_row(False)], index=None)
+            raise AssertionError("一条已知忠实的都没有，应当报错而不是硬跑")
+        except SystemExit:
+            pass
+
+
+def test_judge_probe_refuses_context_recorded_before_truncation_fix():
+    """**回归**：记的上下文超过 token 预算 = 记的不是模型实收的那份，必须拒跑。
+
+    踩过：修「记下未截断全文」之前生成的报告，`context_texts` 记的是全文，
+    裁判读到模型根本没看到的那段，就把「模型说这里没有」判成矛盾 → 假结论「裁判不过关」。
+    实收正文必然 ≤ `context_max_tokens`，超了就一定记错了。
+    """
+    with _isolated_env():
+        import judge_probe as p
+
+        assert p.context_over_budget([], 6000) == (False, 0)
+        assert p.context_over_budget([{"text": "短"}], 6000)[0] is False
+        over, tokens = p.context_over_budget([{"text": "字" * 20000}], 6000)
+        assert over is True and tokens > 6000
+        assert p.context_over_budget([{"text": "字" * 20000}], 60000)[0] is False
+
+
 def test_plain_answer_is_not_abstention():
     got, _ = scoring.abstained("思维链就是强制模型输出推理过程。" * 10)
     assert got is False
