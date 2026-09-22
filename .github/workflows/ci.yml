@@ -1,0 +1,33 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 回归测试
+        run: python -m pytest tests/ -q
+
+      # 回归门禁：没有本地基线时它会明确说「还没有基线」并给出建立命令，
+      # 而不是报 FAIL —— 所以在这条上加上 --skip-run 只做「有基线才比」的语义检查。
+      # 基线是本地产物（eval/baseline/ 不进仓库），CI 里不做指标比较。
+      - name: 评测脚本可导入性 + 标注校验
+        run: |
+          python -c "import sys; sys.path.insert(0, 'eval'); import scoring, run_all, run_eval, run_gen_eval, run_agent_eval; print('评测脚本导入 OK')"
+          python -c "import sys; sys.path.insert(0, 'eval'); import scoring; print('标注类别口径：', scoring.ANSWERABLE_KINDS, scoring.GATE_KINDS, scoring.MANUAL_KINDS)"
