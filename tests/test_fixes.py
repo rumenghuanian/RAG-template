@@ -800,6 +800,51 @@ def test_agent_system_prompt_follows_the_skill_identity():
     assert "课程笔记库" not in generic and "菜谱库" not in generic
 
 
+def test_llm_free_evals_do_not_require_an_api_key():
+    """**回归**：不调用 LLM 的评测，不该被「没配 API key」挡住。
+
+    `RAGConfig.validate()` 硬性要求 `LLM_API_KEY` —— 检索层与 Agent 对照层
+    一次请求都不发，却因此跑不了（用户删掉 key 之后连零成本评测都做不了）。
+    `bootstrap.allow_llm_free_run()` 给占位 key 让管线能构建；
+    真要调用 LLM 的路径（生成层）仍然必须配真 key。
+    """
+    import bootstrap
+
+    class _Cfg:
+        llm_api_key = ""
+        llm_base_url = ""
+
+    c = _Cfg()
+    bootstrap.allow_llm_free_run(c)
+    assert c.llm_api_key, "应该填上占位 key，否则 validate() 会拦"
+    assert c.llm_base_url, "base_url 也补默认值，避免同一个坑再踩一次"
+    # 占位 key 必须一眼能认出来，不能长得像真 key（否则会被误当成配好了）
+    assert c.llm_api_key.startswith("not-needed")
+    assert not c.llm_api_key.startswith("sk-")
+
+    # 已经配好的不动它
+    class _Cfg2:
+        llm_api_key = "sk-real"
+        llm_base_url = "https://api.example.com/v1"
+
+    c2 = _Cfg2()
+    bootstrap.allow_llm_free_run(c2)
+    assert c2.llm_api_key == "sk-real"
+    assert c2.llm_base_url == "https://api.example.com/v1"
+
+    # 真的走 validate：没配 key 时它应该仍会报错（这个行为不能改，
+    # 生成层必须要求真 key）
+    from rag_core import RAGConfig
+
+    raw = RAGConfig(llm_api_key="", llm_base_url="u", data_path=".")
+    try:
+        raw.validate()
+    except ValueError as e:
+        assert "LLM_API_KEY" in str(e)
+    else:
+        raise AssertionError("validate() 仍应要求 key（只是零 LLM 的评测会先补占位）")
+
+
 def test_stale_baseline_files_are_removed_from_baseline():
     """**回归**：立基线时，上一版残留的层文件必须删掉。
 

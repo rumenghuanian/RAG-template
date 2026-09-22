@@ -15,6 +15,9 @@ eval/last_gen_report*.json
 eval/last_gen_subset*.json
 eval/last_gen_shuffle*.json
 eval/gate_review*.md
+# 人工复核表：1MB+ 的生成物，随时可用 build_human_review.py 重建
+# （但 human_labels*.json **不**忽略 —— 那是人工判断的原始证据，应当能进仓库）
+eval/human_review*.html
 eval/rare_tokens*.json
 eval/_*.log
 # 回归基线：本地立的东西，不进仓库（别人机器上会重新立）

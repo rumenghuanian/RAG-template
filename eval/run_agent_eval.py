@@ -247,6 +247,7 @@ def main() -> None:
     ]
 
     config = RAGConfig()
+    bootstrap.allow_llm_free_run(config)   # 本层零 LLM 成本，没配 key 也该能跑
     config.validate()
     pipeline = BasicRAGPipeline(config, SKILLS[skill_name]()).build()
 

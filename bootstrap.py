@@ -58,6 +58,20 @@ def describe_corpus(skill: str, config) -> str:
     )
 
 
+def allow_llm_free_run(config) -> None:
+    """让**不调用 LLM** 的评测（检索层 / Agent 对照层）在没配 API key 时也能跑。
+
+    `RAGConfig.validate()` 会硬性要求 `LLM_API_KEY`，于是「没配 key」与「配置写错了」
+    被混为一谈 —— 而那两层评测本来一次请求都不发（只跑检索与判分）。
+    这里给一个占位 key 让管线能构建；生成器不会被用到，真要调用会在网络层报错。
+    """
+    if not getattr(config, "llm_api_key", ""):
+        print("（未配置 LLM_API_KEY：本次评测不调用 LLM，用占位 key 构建管线）")
+        config.llm_api_key = "not-needed-for-this-eval"
+    if not getattr(config, "llm_base_url", ""):
+        config.llm_base_url = "http://localhost/v1"
+
+
 def prepare() -> None:
     """在构造任何 HTTP 客户端之前调用一次。"""
     for stream in (sys.stdout, sys.stderr):

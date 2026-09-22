@@ -109,6 +109,7 @@ def main() -> None:
     ]
 
     config = RAGConfig()
+    bootstrap.allow_llm_free_run(config)   # 检索层评测不发请求，没配 key 也该能跑
     config.validate()
     pipe = BasicRAGPipeline(config, SKILLS[skill_name]()).build()
     rt = pipe.retriever
