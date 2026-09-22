@@ -515,7 +515,9 @@ def test_memory_trims_old_turns():
 def test_notes_metadata_from_path_and_h1():
     doc = Document(
         page_content="# 29.RAG 是怎么工作的\n\n正文",
-        metadata={"source": r"F:\x\Agent-100-Days\week5\29.RAG是怎么工作的.md"},
+        # 用正斜杠：Linux 的 Path 不把 `\` 当分隔符，写成 r"F:\..." 会让
+        # 整条路径变成一个 part，week 解析成 None（CI 在 ubuntu 上就是这么挂的）
+        metadata={"source": "F:/x/Agent-100-Days/week5/29.RAG是怎么工作的.md"},
     )
     meta = notes_metadata_extractor(doc)
     assert meta["week"] == 5
@@ -528,7 +530,7 @@ def test_notes_metadata_from_path_and_h1():
 def test_notes_metadata_marks_thinking_articles():
     doc = Document(
         page_content="# 思考 & 补充学习资料\n",
-        metadata={"source": r"F:\x\Agent-100-Days\week7\49.思考 & 补充学习资料.md"},
+        metadata={"source": "F:/x/Agent-100-Days/week7/49.思考 & 补充学习资料.md"},
     )
     meta = notes_metadata_extractor(doc)
     assert meta["is_thinking"] is True

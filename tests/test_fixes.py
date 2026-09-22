@@ -676,9 +676,11 @@ def test_recipe_metadata_provides_the_canonical_fields():
     from rag_core.skills.recipe.metadata import recipe_metadata_extractor
 
     # 布局一：文件直接放在类别目录下
+    # 路径一律用正斜杠：Linux 的 Path 不把 `\` 当分隔符，写成 r"F:\..." 会让
+    # parts[-2:] 拿到整条路径 —— CI 在 ubuntu 上就是这么挂的
     flat = _Doc(
         page_content="# 宫保鸡丁\n★\n",
-        metadata={"source": r"F:\x\data\cook\dishes\meat_dish\宫保鸡丁.md"},
+        metadata={"source": "F:/x/data/cook/dishes/meat_dish/宫保鸡丁.md"},
     )
     m = recipe_metadata_extractor(flat)
     assert m["article_id"] == "meat_dish/宫保鸡丁.md"   # 路径最后两段
@@ -689,7 +691,7 @@ def test_recipe_metadata_provides_the_canonical_fields():
     # 用「类别+菜名」会撞车，加载期唯一性校验抓过两次）
     nested = _Doc(
         page_content="# 陈皮排骨汤\n",
-        metadata={"source": r"F:\x\data\cook\dishes\soup\陈皮排骨汤\陈皮排骨汤.md"},
+        metadata={"source": "F:/x/data/cook/dishes/soup/陈皮排骨汤/陈皮排骨汤.md"},
     )
     m2 = recipe_metadata_extractor(nested)
     assert m2["title"] == "陈皮排骨汤"
