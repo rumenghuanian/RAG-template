@@ -1,0 +1,20 @@
+# LangChain 0.3.x line. In LangChain 1.x, BM25Retriever was moved out of
+# langchain-community, which breaks this project's import paths.
+# Install into the project's own venv, not into a global environment.
+langchain>=0.3,<1.0
+langchain-core>=0.3,<1.0
+langchain-community>=0.3,<1.0
+langchain-openai>=0.2,<1.0
+langchain-huggingface>=0.1,<1.0
+langchain-text-splitters>=0.3,<1.0
+faiss-cpu>=1.8
+sentence-transformers>=3.0
+python-dotenv>=1.0
+rank-bm25>=0.2
+# BM25 Chinese tokenizer. Optional: without it the code falls back to
+# character bigrams (see rag_core/tokenizer.py).
+jieba>=0.42
+pytest>=8.0
+# HTTP service layer (service.py). Not needed for the CLI entries.
+fastapi>=0.110
+uvicorn>=0.29

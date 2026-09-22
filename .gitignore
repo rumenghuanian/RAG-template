@@ -1,0 +1,35 @@
+# 环境变量（密钥）——只放行模板文件，别再漏掉 .env.notes
+.env
+.env.*
+!.env.example
+!.env.notes.example
+
+# 生成的索引
+vector_index/
+*.fingerprint
+
+# 评测产物（按 skill 命名：notes 用原名，其它 skill 带后缀）
+eval/last_report*.json
+eval/last_agent_report*.json
+eval/last_gen_report*.json
+eval/last_gen_subset*.json
+eval/last_gen_shuffle*.json
+eval/gate_review*.md
+eval/rare_tokens*.json
+eval/_*.log
+# 回归基线：本地立的东西，不进仓库（别人机器上会重新立）
+eval/baseline/
+
+# 模型缓存
+.cache/
+
+# 语料：两份都是第三方内容，不随仓库分发（见 README「语料自备」）
+# 如果你自己的数据有明确许可要一起发，删掉下面这行即可
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
