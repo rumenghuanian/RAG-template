@@ -80,6 +80,10 @@ python -m pytest tests/ -q      # 127 项
 > 只要满足 `DATA_PATH` + `FILE_GLOB` 指向一批 `.md`，并让 skill 的 `metadata_extractor`
 > 产出规范字段 `article_id` / `title`（缺了或重了**加载期就会报错**，不会静默失效），就能直接跑。
 
+**接一个新领域**：见 [`docs/ADDING_A_SKILL.md`](docs/ADDING_A_SKILL.md) ——
+从空目录到跑出评测数字的五步，外加 10 条「别踩这些」（全是真踩过的）。
+这个模板的"可插拔"不是口号：已在 `notes`（105 篇笔记）与 `recipe`（322 篇菜谱）上跑通。
+
 ---
 
 # 附：详细笔记
